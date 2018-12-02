@@ -1,13 +1,11 @@
-(() => {
-    const [leftButton, rightButton] = [0, 3];
+(async () => {
+    const DEVICE_NAME_PREFIX = 'BBC micro:bit';
+    const BUTTON_SERVICE_UUID = 'e95d9882-251d-470a-a062-fa1922dfa9a8';
+    const BUTTON_A_DATA_UUID = 'e95dda90-251d-470a-a062-fa1922dfa9a8';
+    const BUTTON_B_DATA_UUID = 'e95dda91-251d-470a-a062-fa1922dfa9a8';
     const [leftArrowKeyCode, rightArrowKeyCode] = [37, 39];
 
-    let isPressing = false;
     const pressKey = keyCode => {
-        if (isPressing) {
-            return;
-        }
-
         const activeElement = document.activeElement;
         const global = activeElement.tagName === 'IFRAME' ? activeElement.contentWindow : window;
         ['keydown', 'keyup'].forEach(typeArg => {
@@ -15,21 +13,32 @@
                 target.dispatchEvent(new KeyboardEvent(typeArg, { keyCode }));
             });
         });
-
-        isPressing = true;
     };
-    setInterval(() => {
-        const gamepad = [].find.call(navigator.getGamepads(), gamepad => gamepad !== null);
-        if (gamepad) {
-            const buttons = gamepad.buttons;
-            if (buttons[leftButton].pressed) {
-                pressKey(leftArrowKeyCode);
-                return;
-            } else if (buttons[rightButton].pressed) {
-                pressKey(rightArrowKeyCode);
-                return;
-            }
-        }
-        isPressing = false;
-    }, 1000 / 60);
+
+    const startService = async (service, charUUID) => {
+        const characteristic = await service.getCharacteristic(charUUID);
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged',
+            event => {
+                if (event.target.value.getUint8(0, true) !== 1) {
+                    return;
+                }
+                if (charUUID === BUTTON_A_DATA_UUID) {
+                    pressKey(leftArrowKeyCode);
+                } else if (charUUID === BUTTON_B_DATA_UUID) {
+                    pressKey(rightArrowKeyCode);
+                }
+            });
+    };
+
+    const device = await navigator.bluetooth.requestDevice({
+        filters: [{
+            namePrefix: DEVICE_NAME_PREFIX,
+        }],
+        optionalServices: [BUTTON_SERVICE_UUID],
+    });
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(BUTTON_SERVICE_UUID);
+    startService(service, BUTTON_A_DATA_UUID);
+    startService(service, BUTTON_B_DATA_UUID);
 })();
